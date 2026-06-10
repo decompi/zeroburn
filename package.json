@@ -1,0 +1,14 @@
+{
+  "name": "zeroburn",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.5.2",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "pnpm build && pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "latest"
+  }
+}
