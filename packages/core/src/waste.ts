@@ -1,7 +1,11 @@
 import type { GovernanceEvent } from "./events.js";
+import type { SessionGovernanceSnapshot } from "./session.js";
 import type { WasteSignal } from "./types.js";
 
-export const detectWasteSignals = (event: GovernanceEvent): WasteSignal[] => {
+export const detectWasteSignals = (
+  event: GovernanceEvent,
+  session?: SessionGovernanceSnapshot,
+): WasteSignal[] => {
   const signals: WasteSignal[] = [];
 
   if (event.tool === "glob" && getPattern(event.args) === "**/*") {
@@ -31,6 +35,52 @@ export const detectWasteSignals = (event: GovernanceEvent): WasteSignal[] => {
       callID: event.callID,
       details: {
         outputLength: event.outputLength,
+      },
+    });
+  }
+
+  if (session && session.broadExplorationCount >= 2) {
+    signals.push({
+      kind: "broad-exploration-sequence",
+      severity: "warning",
+      message: "Session has repeated broad exploration; compress context before continuing.",
+      eventType: event.type,
+      tool: event.tool,
+      callID: event.callID,
+      details: {
+        broadExplorationCount: session.broadExplorationCount,
+        phase: session.phase,
+      },
+    });
+  }
+
+  if (session && session.repeatedActionCount > 0) {
+    signals.push({
+      kind: "repeated-tool-action",
+      severity: "warning",
+      message: "Session is repeating the same tool action, which can indicate a wasteful loop.",
+      eventType: event.type,
+      tool: event.tool,
+      callID: event.callID,
+      details: {
+        repeatedActionCount: session.repeatedActionCount,
+        phase: session.phase,
+      },
+    });
+  }
+
+  if (session && session.totalOutputLength >= 16_000) {
+    signals.push({
+      kind: "raw-context-volume",
+      severity: "warning",
+      message: "Session has accumulated large raw tool output; compress context before heavy reasoning.",
+      eventType: event.type,
+      tool: event.tool,
+      callID: event.callID,
+      details: {
+        totalOutputLength: session.totalOutputLength,
+        truncatedOutputCount: session.truncatedOutputCount,
+        phase: session.phase,
       },
     });
   }
