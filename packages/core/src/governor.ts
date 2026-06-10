@@ -1,4 +1,5 @@
 import type { GovernanceEvent } from "./events.js";
+import { SessionGovernanceState } from "./session.js";
 import type {
   GovernanceDecision,
   GovernorLimits,
@@ -11,6 +12,7 @@ export class ZeroburnGovernor {
   readonly limits: GovernorLimits;
 
   #sessionSpend: Money;
+  #sessions = new Map<string, SessionGovernanceState>();
 
   constructor(limits: GovernorLimits = {}) {
     this.limits = limits;
@@ -38,7 +40,7 @@ export class ZeroburnGovernor {
 
     const budget = this.limits.sessionBudget;
     if (!budget) {
-      return { allowed: true };
+      return { allowed: true, action: "allow" };
     }
 
     const projectedSpend = this.#sessionSpend.amount + (pendingCost?.amount ?? 0);
@@ -50,6 +52,7 @@ export class ZeroburnGovernor {
     if (projectedSpend > budget.amount) {
       return {
         allowed: false,
+        action: "block",
         reason: "Session budget exceeded",
         remainingSessionBudget,
       };
@@ -57,20 +60,36 @@ export class ZeroburnGovernor {
 
     return {
       allowed: true,
+      action: "allow",
       remainingSessionBudget,
     };
   }
 
   evaluateEvent(event: GovernanceEvent): GovernanceDecision {
     const decision = this.evaluate();
-    const wasteSignals = detectWasteSignals(event);
+    const session = this.getSession(event.sessionID);
+    const sessionSnapshot = session.record(event);
+    const wasteSignals = detectWasteSignals(event, sessionSnapshot);
 
     if (wasteSignals.length === 0) {
-      return decision;
+      return {
+        ...decision,
+        session: sessionSnapshot,
+      };
+    }
+
+    if (!decision.allowed) {
+      return {
+        ...decision,
+        session: sessionSnapshot,
+        wasteSignals,
+      };
     }
 
     return {
       ...decision,
+      action: getPolicyAction(wasteSignals),
+      session: sessionSnapshot,
       wasteSignals,
     };
   }
@@ -86,4 +105,29 @@ export class ZeroburnGovernor {
       );
     }
   }
+
+  private getSession(sessionID: string): SessionGovernanceState {
+    const existing = this.#sessions.get(sessionID);
+    if (existing) {
+      return existing;
+    }
+
+    const session = new SessionGovernanceState(sessionID);
+    this.#sessions.set(sessionID, session);
+    return session;
+  }
 }
+
+const getPolicyAction = (
+  wasteSignals: NonNullable<GovernanceDecision["wasteSignals"]>,
+): Exclude<GovernanceDecision["action"], "block"> => {
+  if (
+    wasteSignals.some((signal) =>
+      ["broad-exploration-sequence", "raw-context-volume"].includes(signal.kind),
+    )
+  ) {
+    return "compress_first";
+  }
+
+  return "warn";
+};
