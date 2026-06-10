@@ -9,6 +9,7 @@
     "typecheck": "pnpm build && pnpm -r typecheck"
   },
   "devDependencies": {
+    "@types/node": "^25.9.2",
     "typescript": "latest"
   }
 }
