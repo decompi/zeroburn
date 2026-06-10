@@ -8,14 +8,24 @@ export interface ZeroburnOpenCodeOptions {
 }
 
 const createLogger = (directory: string) => {
+  const logDirectory = join(directory, ".opencode");
   const logPath = join(directory, ".opencode", "zeroburn.log");
 
+  try {
+    mkdirSync(logDirectory, { recursive: true });
+  } catch {
+    return () => {};
+  }
+
   return (event: string, data: Record<string, unknown>) => {
-    mkdirSync(join(directory, ".opencode"), { recursive: true });
-    appendFileSync(
-      logPath,
-      `${JSON.stringify({ at: new Date().toISOString(), event, ...data })}\n`,
-    );
+    try {
+      appendFileSync(
+        logPath,
+        `${JSON.stringify({ at: new Date().toISOString(), event, ...data })}\n`,
+      );
+    } catch {
+      // Logging should never block OpenCode tool execution.
+    }
   };
 };
 
